@@ -448,4 +448,37 @@ public class UserManagerImplTest extends AbstractSecurityTest {
         verify(groupAction, times(1)).onMembersAddedContentId(testGroup, membersIds, Collections.emptySet(), root, getNamePathMapper());
 
     }
+
+    @Test
+    public void testDanglingUserGroupMemberships() throws Exception {
+        // First step is to create a test group. Later during the test, the test user will be added to the group.
+        Group group = userMgr.createGroup(new PrincipalImpl("AlphaGroup"), null);
+        assertFalse(group.getMembers().hasNext());
+
+        // Create test user. The user will have the "jcr:uuid=cd4388c0-c62e-35ac-8b99-e3ec49fd9409". This is predictable
+        // because the "UUID" is created based on the "userID" in UUIDUtils.generateUUID(String hint). This will become
+        // important later on.
+        User user = userMgr.createUser("johnsmith", "password", new PrincipalImpl("johnsmith"), null);
+
+        // Add user to groups. The group will now have a property called "rep:members" which is an array of
+        // WeakReference. This array now will contain the "jcr:uuid" of the user that is added to the group:
+        //
+        // rep:members:WeakReference[] = [cd4388c0-c62e-35ac-8b99-e3ec49fd9409]
+        group.addMember(user);
+        assertTrue(group.isMember(user));
+
+        // Delete test user.
+        user.remove();
+        assertFalse(group.getMembers().hasNext()); // No user in the group
+
+        // At this point the user is deleted, but the group still has a "dangling" reference to the users "jcr:uuid".
+        // Remember that the "jcr:uuid" is created based on the "userID".
+
+        // Create test user AGAIN.
+        // This will create a user with the same "jcr:uuid" (cd4388c0-c62e-35ac-8b99-e3ec49fd9409).
+        User sameUser = userMgr.createUser("johnsmith", "password", new PrincipalImpl("johnsmith"), null);
+
+        // At this point the user was never added to the group, but the group
+        assertFalse("User should not be member of the group!", group.isMember(sameUser));
+    }
 }
